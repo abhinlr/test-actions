@@ -1,0 +1,60 @@
+name: Update Changelog
+on:
+  pull_request:
+    types: [opened, closed]
+
+jobs:
+  update-changelog:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened' || (github.event.action == 'closed' && github.event.pull_request.merged)
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Get PR details
+      id: pr
+      run: |
+        if [ "${{ github.event.action }}" == "opened" ]; then
+          echo "PR_NUMBER=${{ github.event.number }}" >> $GITHUB_OUTPUT
+          echo "PR_TITLE=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+          echo "PR_URL=${{ github.event.pull_request.html_url }}" >> $GITHUB_OUTPUT
+          echo "PR_ACTION=new" >> $GITHUB_OUTPUT
+        elif [ "${{ github.event.pull_request.merged }}" == "true" ]; then
+          echo "PR_NUMBER=${{ github.event.number }}" >> $GITHUB_OUTPUT
+          echo "PR_TITLE=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+          echo "PR_URL=${{ github.event.pull_request.html_url }}" >> $GITHUB_OUTPUT
+          echo "PR_ACTION=merged" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Update CHANGELOG.md
+      run: |
+        if [ -z "${{ steps.pr.outputs.PR_NUMBER }}" ]; then
+          echo "No PR information available. Skipping."
+          exit 0
+        fi
+        
+        TODAY=$(date +'%Y-%m-%d')
+        ENTRY=""
+        if [ "${{ steps.pr.outputs.PR_ACTION }}" == "new" ]; then
+          ENTRY="## [$TODAY] PR Opened\n- [#${{ steps.pr.outputs.PR_NUMBER }}: ${{ steps.pr.outputs.PR_TITLE }}](${{ steps.pr.outputs.PR_URL }}) (Opened)\n\n"
+        else
+          ENTRY="## [$TODAY] PR Merged\n- [#${{ steps.pr.outputs.PR_NUMBER }}: ${{ steps.pr.outputs.PR_TITLE }}](${{ steps.pr.outputs.PR_URL }})\n\n"
+        fi
+        
+        # Prepend to CHANGELOG.md
+        if [ -f "CHANGELOG.md" ]; then
+          echo -e "$ENTRY$(cat CHANGELOG.md)" > CHANGELOG.md
+        else
+          echo -e "$ENTRY" > CHANGELOG.md
+        fi
+
+    - name: Commit changes
+      run: |
+        git config --global user.name "github-actions"
+        git config --global user.email "github-actions@github.com"
+        git add CHANGELOG.md
+        git commit -m "Update CHANGELOG.md for PR #${{ steps.pr.outputs.PR_NUMBER }}"
+        git push
